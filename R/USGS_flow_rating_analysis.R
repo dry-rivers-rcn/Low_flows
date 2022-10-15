@@ -117,5 +117,39 @@ stopCluster(cl)
 
 #End Time
 tf<-Sys.time()
-tf-t0
+tf-t0 #17 min on Nate's Modeling Machine
 
+#interrogate results
+df<-output %>% drop_na()
+
+#Export results
+write.csv(df, "data/SubGoodQ.csv")
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Step 4: Plots plots plots --------------------------------------------
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#Quick plot
+min_flow_pdf<-df %>% 
+  ggplot() + 
+    geom_density(
+      aes(minGoodQ_cfs),
+      fill = "#d95f02", 
+      alpha = 0.95) +
+    theme_bw() + 
+    scale_x_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                  labels = trans_format("log10", math_format(10^.x))) +
+    xlab("Min Good Flow Reading [cfs]")
+
+duration_below_good_pdf<-df %>% 
+  mutate(daysSubGood_prc = daysSubGood_prc*100) %>% 
+  ggplot() + 
+  geom_density(
+    aes(daysSubGood_prc), 
+    fill = "#d95f02", 
+    alpha = 0.95) +
+  theme_bw() + 
+  scale_x_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                labels = trans_format("log10", math_format(10^.x))) +
+    xlab("Days Below Good Flow Reading [%]")
+
+min_flow_pdf + duration_below_good_pdf
