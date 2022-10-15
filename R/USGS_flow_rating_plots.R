@@ -14,7 +14,8 @@ remove(list=ls())
 #Load packages of interest
 library(tidyverse) #join the cult
 library(patchwork) #combine multiple plot objects
-library(sf)
+library(scales)    #ploting
+library(sf)        #spatial data
 
 #Read and tidy spatial data
 subGoodQ <- read_csv("data/SubGoodQ.csv")
@@ -74,14 +75,21 @@ gages<-gages %>%
     lat = st_coordinates(gages)[,1], 
     lon = st_coordinates(gages)[,2])
 
+#Convert to percent
+gages <- gages %>%
+  mutate(
+    daysSubGood_prop = daysSubGood_prc,
+    daysSubGood_prc  = daysSubGood_prc*100)
+
+#Seprate gages in perennial and non-perennial
+p_gages  <- gages %>% filter(NP == 0)
+np_gages <- gages %>% filter(NP == 1)
+
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Step 3: Gage location figure -------------------------------------------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #Crate map
-gages %>%
-  mutate(
-    daysSubGood_prop = daysSubGood_prc,
-    daysSubGood_prc  = daysSubGood_prc*100) %>% 
+map_fig <- gages %>%
   arrange(daysSubGood_prc) %>% 
   ggplot()+
     geom_sf(data = states, lwd=0.5) + 
@@ -105,16 +113,85 @@ gages %>%
       breaks = seq(0,100,25)) +
     scale_shape(labels = c("Perennial", "Non-perennial")) +
     guides(
+      color = guide_colorbar(
+        title ="% Flow Record", 
+        order = 1),
+      size="none", 
+      alpha = "none",
       shape = guide_legend(
         title = "Stream Type", 
-        override.aes = list(size=3, color="grey30")),
-      color = guide_colorbar(title="% Flow Record"),
-      size="none", 
-      alpha = "none") +
+        override.aes = list(size=3, color=c("#4575b4","#d73027")), 
+        order = 2)) +
     theme_bw() +
       theme(legend.position = "right") +
       xlab(NULL) +
       ylab(NULL) 
   
-      
+map_fig
 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Step 4: Duration of flow below "good" measurement ----------------------------
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#Make plot
+daysSubGood_plot <- ggplot() + 
+  geom_density(
+    data = p_gages,
+    aes(daysSubGood_prc), 
+    fill = "#4575b4", 
+    alpha = 0.99, 
+    col = "grey30", 
+    size = 0.5) +
+  geom_density(
+    data = np_gages,
+    aes(daysSubGood_prc), 
+    fill = "#d73027", 
+    alpha = 0.90, 
+    col = "grey30", 
+    size = 0.5) +
+  theme_bw() + 
+    scale_x_log10(
+      breaks = c(0.001, 0.01, 0.1, 1, 10, 100),
+      labels = c("0.001", "0.01","0.1", "1", "10", "100")
+    ) +
+    xlab("% Flow Record")
+
+daysSubGood_plot
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Step 5: Magnitude of flow below "good" measurement ----------------------------
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#Make plot
+minGoodQ_plot <- ggplot() + 
+  geom_density(
+    data = p_gages,
+    aes(minGoodQ_cfs), 
+    fill = "#4575b4", 
+    col  = "grey30", 
+    size = 0.5,
+    alpha = 0.99) +
+  geom_density(
+    data = np_gages,
+    aes(minGoodQ_cfs), 
+    fill = "#d73027", 
+    col = "grey30",
+    alpha = 0.90, 
+    size = 0.5) +
+  theme_bw() + 
+  scale_x_log10(
+    limits = c(10^-3, 10^4),
+    breaks = trans_breaks("log10", function(x) 10^x),
+    labels = trans_format("log10", math_format(10^.x)))  +
+  xlab("Flow [cfs]")
+
+minGoodQ_plot
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Step 6: Combine plots --------------------------------------------------------
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+map_fig / (minGoodQ_plot + daysSubGood_plot) + 
+  plot_layout(
+    guides = 'collect', 
+    heights = c(3,1)) + 
+  plot_annotation(tag_levels = "A", tag_suffix = ".")
+
+ggsave("docs/USGS_flow_rating.png", width = 6, height =5, units ="in")
