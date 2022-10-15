@@ -44,3 +44,15 @@ gages <- gages %>%
   st_transform(., crs="+proj=aea +lat_1=20 +lat_2=60 +lat_0=40 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80") %>%  
   left_join(., df %>% rename(STAID = gage_id)) %>% 
   drop_na(minGoodQ_cfs)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Step 3: Gage location figure -------------------------------------------------
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ggplot()+
+  geom_sf(data = states) + 
+  geom_sf(data = gages, 
+          color = '#E57200', 
+          alpha = 0.70, 
+          pch=19, 
+          cex=4) +
+  theme_bw()
