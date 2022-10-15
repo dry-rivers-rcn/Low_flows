@@ -18,10 +18,29 @@ library(sf)
 
 #Read and tidy spatial data
 df     <- read_csv("data/SubGoodQ.csv")
-gages  <- read_csv(paste0(data_dir, "gagesII.csv"))
-states <- st_read("data/tl_2012_us_state/tl_2012_us_state.shp") %>% 
-
+gages  <- read_csv("data/gagesII.csv")
+states <- st_read("data/tl_2012_us_state.shp")  
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Step 2: Tidy data ------------------------------------------------------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#Edit states shape
+states <- states %>% 
+  filter(
+    NAME != 'Alaska', 
+    NAME != 'Hawaii', 
+    NAME != 'Guam', 
+    NAME != 'Commonwealth of the Northern Mariana Islands', 
+    NAME != 'American Samoa',
+    NAME != 'Puerto Rico',
+    NAME != 'United States Virgin Islands') %>% 
+  st_transform(., crs="+proj=aea +lat_1=20 +lat_2=60 +lat_0=40 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80") 
+
+#Edit gages shape
+gages <- gages %>% 
+  st_as_sf(., 
+           coords = c("LNG_GAGE", 'LAT_GAGE'), 
+           crs = '+proj=longlat +datum=WGS84 +no_defs') %>% 
+  st_transform(., crs="+proj=aea +lat_1=20 +lat_2=60 +lat_0=40 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80") %>%  
+  left_join(., df %>% rename(STAID = gage_id)) %>% 
+  drop_na(minGoodQ_cfs)
