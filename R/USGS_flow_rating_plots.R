@@ -17,9 +17,10 @@ library(patchwork) #combine multiple plot objects
 library(sf)
 
 #Read and tidy spatial data
-df     <- read_csv("data/SubGoodQ.csv")
-gages  <- read_csv("data/gagesII.csv")
-states <- st_read("data/tl_2012_us_state.shp")  
+subGoodQ <- read_csv("data/SubGoodQ.csv")
+gages    <- read_csv("data/gagesII.csv")
+p_class  <- read_csv("data/price_2021_np_streams.csv", col_types = c("ci")) 
+states   <- st_read("data/tl_2012_us_state.shp")  
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Step 2: Tidy data ------------------------------------------------------------
@@ -36,15 +37,33 @@ states <- states %>%
     NAME != 'United States Virgin Islands') %>% 
   st_transform(., crs="+proj=aea +lat_1=20 +lat_2=60 +lat_0=40 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80") 
 
+#Tidy price classification data
+p_class <- p_class %>% 
+  #rename gage id for join below
+  rename(STAID = gage) %>% 
+  #Remove duplicates 
+  distinct() %>% 
+  #deal with 0 infront of gage no
+  mutate(
+    n.char = nchar(STAID),
+    STAID = if_else(n.char==7, paste0("0", STAID), STAID), 
+    STAID = if_else(n.char==9, paste0("0", STAID), STAID)) %>% 
+  select(-n.char)
+  
 #Edit gages shape
 gages <- gages %>% 
-  left_join(., df %>% rename(STAID = gage_id)) %>% 
+  #Add duration of streamflow under good readings
+  left_join(., subGoodQ %>% rename(STAID = gage_id)) %>% 
   drop_na(minGoodQ_cfs) %>% 
+  #Add Price non-perennial stream classification
+  left_join(., p_class) %>% 
+  mutate(NP = replace_na(NP, 0)) %>%
+  mutate(NP = paste0(NP)) %>% 
+  #Convert to simple feature
   st_as_sf(., 
          coords = c("LNG_GAGE", 'LAT_GAGE'), 
          crs = '+proj=longlat +datum=WGS84 +no_defs') %>% 
   st_transform(., crs="+proj=aea +lat_1=20 +lat_2=60 +lat_0=40 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80") 
-
 
 #Limit gages to just areas within CONUS
 gages <- gages[states,]
@@ -72,27 +91,30 @@ gages %>%
         y=lon,
         color = daysSubGood_prc, 
         size =  daysSubGood_prc, 
-        alpha = daysSubGood_prc),
-      pch=16,
-      ) +
+        alpha = daysSubGood_prc, 
+        shape= NP)) +
     scale_color_distiller(
       palette = 'Spectral',
       direction = -1, 
-      breaks = seq(0,100,25), 
-      guide="colorbar") +
+      breaks = seq(0,100,25)) +
     scale_size_continuous(
       range = c(0.5, 1.5), 
       breaks = seq(0,100,25)) +
     scale_alpha_continuous(
       range = c(0.5,.8) , 
       breaks = seq(0,100,25)) +
-    theme_bw() +
-    theme(legend.position = "right") +
-      xlab(NULL) +
-      ylab(NULL) +
+    scale_shape(labels = c("Perennial", "Non-perennial")) +
     guides(
+      shape = guide_legend(
+        title = "Stream Type", 
+        override.aes = list(size=3, color="grey30")),
       color = guide_colorbar(title="% Flow Record"),
       size="none", 
-      alpha = "none")
+      alpha = "none") +
+    theme_bw() +
+      theme(legend.position = "right") +
+      xlab(NULL) +
+      ylab(NULL) 
   
       
+
