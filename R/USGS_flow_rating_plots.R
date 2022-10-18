@@ -191,7 +191,7 @@ minGoodQ_plot
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Step 6: Separate gages by bins-------------------------------------------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-gages %>%
+b_plot <- gages %>%
   st_drop_geometry() %>%
   select(STAID, daysSubGood_prc) %>%
   filter(daysSubGood_prc>=50) %>%
@@ -202,29 +202,44 @@ gages %>%
       geom_col() +
       geom_text(
         aes(label=paste0("n=",n_gages)), 
-        vjust=-1) +
+        vjust=-1, 
+        size = 3) +
       scale_x_discrete(
-        name = "Proportion of flow record\nbelow lowest 'Good' flow measurement [%]", 
+        name = "% Flow Record", 
         labels = c("50-75", "75-90", "90-95", "95-100")) +
       scale_y_continuous(
-        name = "Number of gages",
-        expand = expansion(mult = c(0, .1))) + 
+        name = "Gages",
+        expand = expansion(mult = c(0, .25))) + 
       scale_fill_viridis_d(name = "group") +
     theme_classic() + 
-    theme(panel.grid = element_blank(),
-          panel.border = element_blank())
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_blank(), 
+      axis.title = element_text(size = 10),
+      axis.text =  element_text(size = 8), 
+      #panel.background = element_rect(fill = "transparent", colour = NA),  
+      plot.background = element_rect(fill = "transparent", colour = NA)
+    )
 
-#Next steps
-# Kill Non-perennial and perennial classification
-# Size correctly
-# place in inset
-
-
+b_plot
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Step 6: Combine plots --------------------------------------------------------
+# Step 7: Combine plots --------------------------------------------------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 map_fig +
-  plot_annotation(tag_levels = "A", tag_suffix = ".")
+  inset_element(
+    b_plot,
+    left = 0.71, 
+    bottom  = 0.50, 
+    right = unit(1, 'npc') +  unit(1, 'in'), 
+    top = unit(1, 'npc') + unit(0.4, 'in')
+  ) +
+  plot_annotation(
+    #title = "USGS 06879650, Kings Creek near Manhattan KS",
+    tag_levels = "a",
+    tag_prefix = "(",
+    tag_suffix = ")")
+
+
 
 ggsave("docs/USGS_flow_rating.png", width = 6, height =3.75, units ="in")
