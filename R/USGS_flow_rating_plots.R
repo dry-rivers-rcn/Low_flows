@@ -20,7 +20,7 @@ library(sf)        #spatial data
 #Read and tidy spatial data
 subGoodQ <- read_csv("data/SubGoodQ.csv")
 gages    <- read_csv("data/gagesII.csv")
-p_class  <- read_csv("data/price_2021_np_streams.csv", col_types = c("ci")) 
+#p_class  <- read_csv("data/price_2021_np_streams.csv", col_types = c("ci")) 
 states   <- st_read("data/tl_2012_us_state.shp")  
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -56,10 +56,10 @@ gages <- gages %>%
   #Add duration of streamflow under good readings
   left_join(., subGoodQ %>% rename(STAID = gage_id)) %>% 
   drop_na(minGoodQ_cfs) %>% 
-  #Add Price non-perennial stream classification
-  left_join(., p_class) %>% 
-  mutate(NP = replace_na(NP, 0)) %>%
-  mutate(NP = paste0(NP)) %>% 
+  # #Add Price non-perennial stream classification
+  # left_join(., p_class) %>% 
+  # mutate(NP = replace_na(NP, 0)) %>%
+  # mutate(NP = paste0(NP)) %>% 
   #Convert to simple feature
   st_as_sf(., 
          coords = c("LNG_GAGE", 'LAT_GAGE'), 
@@ -81,9 +81,9 @@ gages <- gages %>%
     daysSubGood_prop = daysSubGood_prc,
     daysSubGood_prc  = daysSubGood_prc*100)
 
-#Seprate gages in perennial and non-perennial
-p_gages  <- gages %>% filter(NP == 0)
-np_gages <- gages %>% filter(NP == 1)
+# #Seprate gages in perennial and non-perennial
+# p_gages  <- gages %>% filter(NP == 0)
+# np_gages <- gages %>% filter(NP == 1)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Step 3: Gage location figure -------------------------------------------------
@@ -100,7 +100,8 @@ map_fig <- gages %>%
         color = daysSubGood_prc, 
         size =  daysSubGood_prc, 
         alpha = daysSubGood_prc, 
-        shape= NP)) +
+        #shape= NP
+        )) +
     scale_color_distiller(
       palette = 'Spectral',
       direction = -1, 
@@ -111,17 +112,18 @@ map_fig <- gages %>%
     scale_alpha_continuous(
       range = c(0.5,.8) , 
       breaks = seq(0,100,25)) +
-    scale_shape(labels = c("Perennial", "Non-perennial")) +
+    #scale_shape(labels = c("Perennial", "Non-perennial")) +
     guides(
       color = guide_colorbar(
         title ="% Flow Record", 
         order = 1),
       size="none", 
       alpha = "none",
-      shape = guide_legend(
-        title = "Stream Type", 
-        override.aes = list(size=3, color=c("#4575b4","#d73027")), 
-        order = 2)) +
+      # shape = guide_legend(
+      #   title = "Stream Type", 
+      #   override.aes = list(size=3, color=c("#4575b4","#d73027")), 
+      #   order = 2) +
+    ) +
     theme_bw() +
       theme(legend.position = "right") +
       xlab(NULL) +
@@ -189,28 +191,36 @@ minGoodQ_plot
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Step 6: Separate gages by bins-------------------------------------------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-gages %>% 
-  st_drop_geometry() %>% 
-  select(STAID, daysSubGood_prc) %>% 
-  filter(daysSubGood_prc>=50) %>% 
-  ggplot() + 
-    geom_bar(aes(daysSubGood_prc)) + 
-    scale_x_binned(
-      breaks=c(50,75,90, 95),
-      name = "Percent of Days with\nDischarge < Lowest\nGood Measurement"
-    )
-      #name = "Percent of Days with\nDischarge < Lowest\nGood Measurement",
-      #labels = scales::percent, limits = c(0, 1))
+gages %>%
+  st_drop_geometry() %>%
+  select(STAID, daysSubGood_prc) %>%
+  filter(daysSubGood_prc>=50) %>%
+  group_by(group = cut(daysSubGood_prc, breaks=c(50, 75, 90, 95, 100))) %>%
+  summarise(n_gages = n()) %>%
+  drop_na() %>% 
+    ggplot(aes(group, n_gages)) +
+      geom_col() +
+      geom_text(
+        aes(label=paste0("n=",n_gages)), 
+        vjust=-1) +
+      scale_x_discrete(
+        name = "Proportion of flow record\nbelow lowest 'Good' flow measurement [%]", 
+        labels = c("50-75", "75-90", "90-95", "95-100")) +
+      scale_y_continuous(
+        name = "Number of gages",
+        expand = expansion(mult = c(0, .1))) + 
+      scale_fill_viridis_d(name = "group") +
+    theme_classic() + 
+    theme(panel.grid = element_blank(),
+          panel.border = element_blank())
 
-gages %>% 
-  st_drop_geometry() %>% 
-  select(STAID, daysSubGood_prc) %>% 
-  filter(daysSubGood_prc>=50) %>% 
-  summarise(n())
+#Next steps
+# Kill Non-perennial and perennial classification
+# Size correctly
+# place in inset
 
-ggplot(mtcars) +
-  geom_bar(aes(mpg)) +
-  scale_x_binned()
+
+
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Step 6: Combine plots --------------------------------------------------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
