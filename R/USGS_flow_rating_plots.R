@@ -149,10 +149,11 @@ daysSubGood_plot <- ggplot() +
     col = "grey30", 
     size = 0.5) +
   theme_bw() + 
-    scale_x_log10(
-      breaks = c(0.001, 0.01, 0.1, 1, 10, 100),
-      labels = c("0.001", "0.01","0.1", "1", "10", "100")
-    ) +
+    # scale_x_log10(
+    #   breaks = c(0.001, 0.01, 0.1, 1, 10, 100),
+    #   labels = c("0.001", "0.01","0.1", "1", "10", "100")
+    # ) +
+    coord_cartesian(xlim=c(0,25))+
     xlab("% Flow Record")
 
 daysSubGood_plot
@@ -186,12 +187,34 @@ minGoodQ_plot <- ggplot() +
 minGoodQ_plot
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Step 6: Separate gages by bins-------------------------------------------------
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+gages %>% 
+  st_drop_geometry() %>% 
+  select(STAID, daysSubGood_prc) %>% 
+  filter(daysSubGood_prc>=50) %>% 
+  ggplot() + 
+    geom_bar(aes(daysSubGood_prc)) + 
+    scale_x_binned(
+      breaks=c(50,75,90, 95),
+      name = "Percent of Days with\nDischarge < Lowest\nGood Measurement"
+    )
+      #name = "Percent of Days with\nDischarge < Lowest\nGood Measurement",
+      #labels = scales::percent, limits = c(0, 1))
+
+gages %>% 
+  st_drop_geometry() %>% 
+  select(STAID, daysSubGood_prc) %>% 
+  filter(daysSubGood_prc>=50) %>% 
+  summarise(n())
+
+ggplot(mtcars) +
+  geom_bar(aes(mpg)) +
+  scale_x_binned()
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Step 6: Combine plots --------------------------------------------------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-map_fig / (minGoodQ_plot + daysSubGood_plot) + 
-  plot_layout(
-    guides = 'collect', 
-    heights = c(3,1)) + 
+map_fig +
   plot_annotation(tag_levels = "A", tag_suffix = ".")
 
-ggsave("docs/USGS_flow_rating.png", width = 6, height =5, units ="in")
+ggsave("docs/USGS_flow_rating.png", width = 6, height =3.75, units ="in")
