@@ -120,11 +120,11 @@ USGS_gage <- "06879650" # USGS 06879650 KINGS C NR MANHATTAN, KS
 # Download field measurement data
 sw_meas <- readNWISmeas(siteNumbers = USGS_gage) #download field measurements
 sw_meas$discharge_va <- sw_meas$discharge_va*0.0283168 #convert from cfs to cms
-sw_meas$discharge_cfs_cut <- cut(sw_meas$discharge_va, c(0, .01, 0.1, 1, 10, 100), include.lowest = F) #create flow categorices
+sw_meas$discharge_cfs_cut <- cut(sw_meas$discharge_va, c(0, .005, 0.05, 0.5, 5), include.lowest = F) #create flow categorices
 sw_meas$measured_rating_diff <- factor(sw_meas$measured_rating_diff, levels = c("Poor", "Fair", "Good", "Excellent")) #populate categories by acuracy code
 
 #download flow ts data
-daily_raw <-
+daily_flow <-
   readNWISdv(
     siteNumbers = USGS_gage, 
     parameterCd = pCodes,
@@ -134,7 +134,8 @@ daily_raw <-
     Q_cfs = X_00060_00003) %>% 
   mutate(
     Q_cms = Q_cfs*0.0283168
-  )
+  ) %>% 
+  select(date, Q_cms)
 
 #4.2 Plot of accuracy codes across flow ----------------------------------------
 # Manual measurements
@@ -144,10 +145,12 @@ p_measurements <-
   subset(discharge_va > 0) %>% 
   ggplot(aes(x = discharge_cfs_cut, fill = measured_rating_diff)) +
   geom_bar() +
-  scale_x_discrete(name = "Flow [cms]", 
-                   labels = c("< 0.01", "0.01 - 0.1", "0.1 - 1", "1-10", ">100")) +
-  scale_y_continuous(name = "Number of Flow\nMeasurements",
-                     expand = expansion(c(0, 0.025))) +
+  scale_x_discrete(
+    name = "Flow [cms]", 
+    labels = c("<0.005", "0.005-0.05", "0.05-0.5", "0.5-5",">5")) +
+  scale_y_continuous(
+    name = "Number of Flow\nMeasurements",
+    expand = expansion(c(0, 0.025))) +
   scale_fill_brewer(palette = 'Spectral') +
   theme_classic() +
   theme(
@@ -160,20 +163,68 @@ p_measurements <-
 
 p_measurements
  
-# Estimate water year distribution --------------------------------------------
-daily_raw$WaterYear <- year(daily_raw$Date + days(92))
-daily_raw$WYDOY <- yday(daily_raw$Date + days(92))
-colnames(daily_raw)[colnames(daily_raw)=="X_00060_00003"] <- "discharge_cfs"
-daily <- 
-  daily_raw %>% 
-  subset(WaterYear >= 1980 & WaterYear <= 2021)
+# Figure of annual runoff vs % days bays below "good" --------------------------
+# Add water year information
+daily_flow <- daily_flow %>% 
+  as_tibble() %>% 
+  mutate(waterYear = year(date + days(92)))
+
+#Determine lowest "good" flow measurement
+minGoodQ_cms <- subGoodQ %>% 
+  filter(gage_id == USGS_gage) %>% 
+  mutate(minGoodQ_cms = minGoodQ_cfs*0.0283168) %>% 
+  select(minGoodQ_cms) %>% pull()
+
+#estimate duration below good
+dur_below_good <- daily_flow %>% 
+  mutate(below_good = if_else(Q_cms < minGoodQ_cms, 1, 0)) %>% 
+  group_by(waterYear) %>% 
+  summarise(
+    below_good = sum(below_good),
+    total      = n(),
+    prop_below_good = below_good/total
+  ) %>% 
+  select(waterYear, prop_below_good)
+
+#Obtain watershed area information
+ws_area<- gages %>% 
+  st_drop_geometry() %>% 
+  filter(STAID == USGS_gage) %>% 
+  select(DRAIN_SQKM) %>% 
+  pull()
+
+# Estimate Annual runoff depth [mm]
+annual_flow <- daily_flow %>% 
+  mutate(q_mm_day = Q_cms/ws_area/(1000^2)*1000*86400) %>% 
+  group_by(waterYear) %>% 
+  summarise(q_cm = sum(q_mm_day)/10) 
+
+#Join annual runoff and proportion below good tibbles
+annual_flow <- left_join(annual_flow, dur_below_good)
+
+#plot
+p_duration<-annual_flow %>% 
+  ggplot() + 
+    aes(x = q_cm, y = prop_below_good*100) +
+    geom_point(
+      pch=19, 
+      cex=2.5, 
+      col="grey30"
+    ) +
+    theme_classic() +
+      theme(
+        legend.title = element_text(size=10),
+        legend.text  = element_text(size=8),
+      ) + 
+    xlab("Anual Runoff [cm]") + 
+    ylab("Annual duration of flow below\n'Good' flow threshold [%]")
+
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Step 6: Combine plots --------------------------------------------------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #Print individual plots and them put them together in powerpoint
 ggsave(plot = map_fig,        file = "docs/map.png",            width = 6,   height = 3.75, units="in", dpi = 300)
-ggsave(plot = b_plot,         file = "docs/b_plot.png",         width = 2.3, height = 1.75,  units="in", dpi = 300)
-ggsave(plot = p_measurements, file = "docs/p_measurements.png", width = 6,   height = 1.75, units="in", dpi = 300)
-ggsave(plot = p_ts_days,      file = "docs/p_ts_days.png",      width = 6,   height = 1.75, units="in", dpi = 300)
+ggsave(plot = p_measurements, file = "docs/p_measurements.png", width = 3,   height = 2, units="in", dpi = 300)
+ggsave(plot = p_duration,      file = "docs/p_duration.png",      width = 3,   height = 2, units="in", dpi = 300)
 
