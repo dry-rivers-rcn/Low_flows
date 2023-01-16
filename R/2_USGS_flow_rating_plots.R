@@ -12,15 +12,16 @@
 remove(list=ls())
 
 #Load packages of interest
-library(tidyverse) #join the cult
-library(patchwork) #combine multiple plot objects
-library(scales)    #ploting
-library(sf)        #spatial data
+library(tidyverse)     #join the cult
+library(lubridate)     #date format handling
+library(dataRetrieval) #downloading USGS data
+library(patchwork)     #combine multiple plot objects
+library(scales)        #plotting
+library(sf)            #spatial data
 
 #Read and tidy spatial data
 subGoodQ <- read_csv("data/SubGoodQ.csv")
 gages    <- read_csv("data/gagesII.csv")
-#p_class  <- read_csv("data/price_2021_np_streams.csv", col_types = c("ci")) 
 states   <- st_read("data/tl_2012_us_state.shp")  
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -38,28 +39,11 @@ states <- states %>%
     NAME != 'United States Virgin Islands') %>% 
   st_transform(., crs="+proj=aea +lat_1=20 +lat_2=60 +lat_0=40 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80") 
 
-#Tidy price classification data
-# p_class <- p_class %>% 
-#   #rename gage id for join below
-#   rename(STAID = gage) %>% 
-#   #Remove duplicates 
-#   distinct() %>% 
-#   #deal with 0 infront of gage no
-#   mutate(
-#     n.char = nchar(STAID),
-#     STAID = if_else(n.char==7, paste0("0", STAID), STAID), 
-#     STAID = if_else(n.char==9, paste0("0", STAID), STAID)) %>% 
-#   select(-n.char)
-  
 #Edit gages shape
 gages <- gages %>% 
   #Add duration of streamflow under good readings
   left_join(., subGoodQ %>% rename(STAID = gage_id)) %>% 
   drop_na(minGoodQ_cfs) %>% 
-  # #Add Price non-perennial stream classification
-  # left_join(., p_class) %>% 
-  # mutate(NP = replace_na(NP, 0)) %>%
-  # mutate(NP = paste0(NP)) %>% 
   #Convert to simple feature
   st_as_sf(., 
          coords = c("LNG_GAGE", 'LAT_GAGE'), 
@@ -80,10 +64,6 @@ gages <- gages %>%
   mutate(
     daysSubGood_prop = daysSubGood_prc,
     daysSubGood_prc  = daysSubGood_prc*100)
-
-# #Seprate gages in perennial and non-perennial
-# p_gages  <- gages %>% filter(NP == 0)
-# np_gages <- gages %>% filter(NP == 1)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Step 3: Gage location figure -------------------------------------------------
@@ -118,11 +98,7 @@ map_fig <- gages %>%
         title ="% Flow Record", 
         order = 1),
       size="none", 
-      alpha = "none",
-      # shape = guide_legend(
-      #   title = "Stream Type", 
-      #   override.aes = list(size=3, color=c("#4575b4","#d73027")), 
-      #   order = 2) +
+      alpha = "none"
     ) +
     theme_bw() +
       theme(
@@ -134,51 +110,17 @@ map_fig <- gages %>%
 map_fig
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Step 4: Separate gages by bins-------------------------------------------------
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-b_plot <- gages %>%
-  st_drop_geometry() %>%
-  select(STAID, daysSubGood_prc) %>%
-  filter(daysSubGood_prc>=50) %>%
-  group_by(group = cut(daysSubGood_prc, breaks=c(50, 75, 90, 95, 100))) %>%
-  summarise(n_gages = n()) %>%
-  drop_na() %>% 
-    ggplot(aes(group, n_gages)) +
-      geom_col() +
-      geom_text(
-        aes(label=paste0("n=",n_gages)), 
-        vjust=-1, 
-        size = 3) +
-      scale_x_discrete(
-        name = "% Flow Record Below\nGood Flow Measurement", 
-        labels = c("50-75", "75-90", "90-95", "95-100")) +
-      scale_y_continuous(
-        name = "Number of Gages",
-        expand = expansion(mult = c(0, .25))) + 
-      theme_classic() + 
-    theme(
-      panel.grid = element_blank(),
-      panel.border = element_blank(), 
-      axis.title = element_text(size = 10),
-      axis.text =  element_text(size = 8), 
-      #panel.background = element_rect(fill = "transparent", colour = NA),  
-      plot.background = element_rect(fill = "transparent", colour = NA)
-    )
-
-b_plot
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Step 5: Characterize flow below "good" measurement threshold -----------------
+# Step 4: Characterize flow below "good" measurement threshold -----------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## download data
 pCodes = c("00060") # discharge = 00060, stage = 00065
 USGS_gage <- "06879650"  # USGS 06879650 KINGS C NR MANHATTAN, KS
-daily_raw <- 
-  dataRetrieval::readNWISdv(siteNumbers = USGS_gage, 
-                            parameterCd = pCodes,
-                            statCd = "00003") # daily mean
+daily_raw <-readNWISdv(
+    siteNumbers = USGS_gage, 
+    parameterCd = pCodes,
+    statCd = "00003") # daily mean
 
-# Examine 
+# Examine quality of stage-discharge measurements
 sw_meas <- readNWISmeas(siteNumbers = USGS_gage)
 sw_meas$discharge_cfs_cut <- cut(sw_meas$discharge_va, c(0, 0.1, 1, 5, 10, 100, 10000), include.lowest = F)
 sw_meas$measured_rating_diff <- factor(sw_meas$measured_rating_diff, levels = c("Poor", "Fair", "Good", "Excellent"))
@@ -219,8 +161,9 @@ tots <-
     discharge_cfs_total = sum(discharge_cfs)*86400,
     discharge_cfs_toolow = sum(discharge_cfs[toolow])*86400,
     discharge_toolow_prc = discharge_cfs_toolow/discharge_cfs_total)
+
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Step 6: Konza Plots! -----------------
+# Step 5: Konza Plots! ---------------------------------------------------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Manual measurements
 p_measurements <-
@@ -262,10 +205,9 @@ p_ts_days <-
   theme_classic()
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Step 7: Combine plots --------------------------------------------------------
+# Step 6: Combine plots --------------------------------------------------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#I gave up on printing plots on one output. I'm going to resort to powerpoint. 
-
+#Print individual plots and them put them together in powerpoint
 ggsave(plot = map_fig,        file = "docs/map.png",            width = 6,   height = 3.75, units="in", dpi = 300)
 ggsave(plot = b_plot,         file = "docs/b_plot.png",         width = 2.3, height = 1.75,  units="in", dpi = 300)
 ggsave(plot = p_measurements, file = "docs/p_measurements.png", width = 6,   height = 1.75, units="in", dpi = 300)
