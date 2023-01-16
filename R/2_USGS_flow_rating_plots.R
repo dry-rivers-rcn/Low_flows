@@ -6,7 +6,7 @@
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Step 1: Setup Environment ----------------------------------------------------
+# 1.0 Setup Environment ----------------------------------------------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #Clear memory 
 remove(list=ls())
@@ -25,7 +25,7 @@ gages    <- read_csv("data/gagesII.csv")
 states   <- st_read("data/tl_2012_us_state.shp")  
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Step 2: Tidy data ------------------------------------------------------------
+# 2.0 Tidy data ------------------------------------------------------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #Edit states shape
 states <- states %>% 
@@ -66,7 +66,7 @@ gages <- gages %>%
     daysSubGood_prc  = daysSubGood_prc*100)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Step 3: Gage location figure -------------------------------------------------
+# 3.0 Gage location figure -----------------------------------------------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #Crate map
 map_fig <- gages %>%
@@ -110,61 +110,33 @@ map_fig <- gages %>%
 map_fig
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Step 4: Characterize flow below "good" measurement threshold -----------------
+# 4.0 Annual analysis for Konza ------------------------------------------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-## download data
-pCodes = c("00060") # discharge = 00060, stage = 00065
-USGS_gage <- "06879650"  # USGS 06879650 KINGS C NR MANHATTAN, KS
-daily_raw <-readNWISdv(
+# 4.1 Download and tidy data ---------------------------------------------------
+#Define download parameters  
+pCodes    <- c("00060") # discharge = 00060, stage = 00065
+USGS_gage <- "06879650" # USGS 06879650 KINGS C NR MANHATTAN, KS
+
+# Download field measurement data
+sw_meas <- readNWISmeas(siteNumbers = USGS_gage) #download field measurements
+sw_meas$discharge_va <- sw_meas$discharge_va*0.0283168 #convert from cfs to cms
+sw_meas$discharge_cfs_cut <- cut(sw_meas$discharge_va, c(0, .01, 0.1, 1, 10, 100), include.lowest = F) #create flow categorices
+sw_meas$measured_rating_diff <- factor(sw_meas$measured_rating_diff, levels = c("Poor", "Fair", "Good", "Excellent")) #populate categories by acuracy code
+
+#download flow ts data
+daily_raw <-
+  readNWISdv(
     siteNumbers = USGS_gage, 
     parameterCd = pCodes,
-    statCd = "00003") # daily mean
+    statCd = "00003") %>%  # daily mean
+  rename(
+    date  = Date, 
+    Q_cfs = X_00060_00003) %>% 
+  mutate(
+    Q_cms = Q_cfs*0.0283168
+  )
 
-# Examine quality of stage-discharge measurements
-sw_meas <- readNWISmeas(siteNumbers = USGS_gage)
-sw_meas$discharge_cfs_cut <- cut(sw_meas$discharge_va, c(0, 0.1, 1, 5, 10, 100, 10000), include.lowest = F)
-sw_meas$measured_rating_diff <- factor(sw_meas$measured_rating_diff, levels = c("Poor", "Fair", "Good", "Excellent"))
-
-
-# subset to water years only
-daily_raw$WaterYear <- year(daily_raw$Date + days(92))
-daily_raw$WYDOY <- yday(daily_raw$Date + days(92))
-colnames(daily_raw)[colnames(daily_raw)=="X_00060_00003"] <- "discharge_cfs"
-
-daily <- 
-  daily_raw %>% 
-  subset(WaterYear >= 1980 & WaterYear <= 2021)
-
-# set "low flow is impossible" threshold
-q_thres <- 0.22 # cfs
-
-daily$toolow <- daily$discharge_cfs < q_thres
-
-# sum to annual
-annual <-
-  daily %>% 
-  group_by(WaterYear) %>% 
-  summarize(toolow_days = sum(toolow),
-            total_days = sum(is.finite(discharge_cfs)),
-            toolow_prc = toolow_days/total_days,
-            discharge_cfs_total = sum(discharge_cfs)*86400,
-            discharge_cfs_toolow = sum(discharge_cfs[toolow])*86400,
-            discharge_toolow_prc = discharge_cfs_toolow/discharge_cfs_total)
-
-# sum to annual
-tots <-
-  daily  %>% 
-  summarize(
-    toolow_days = sum(toolow),
-    total_days = sum(is.finite(discharge_cfs)),
-    toolow_prc = toolow_days/total_days,
-    discharge_cfs_total = sum(discharge_cfs)*86400,
-    discharge_cfs_toolow = sum(discharge_cfs[toolow])*86400,
-    discharge_toolow_prc = discharge_cfs_toolow/discharge_cfs_total)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Step 5: Konza Plots! ---------------------------------------------------------
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#4.2 Plot of accuracy codes across flow ----------------------------------------
 # Manual measurements
 p_measurements <-
   sw_meas %>% 
@@ -172,8 +144,8 @@ p_measurements <-
   subset(discharge_va > 0) %>% 
   ggplot(aes(x = discharge_cfs_cut, fill = measured_rating_diff)) +
   geom_bar() +
-  scale_x_discrete(name = "Flow [cfs]", 
-                   labels = c("< 0.1", "0.1 - 1", "1 - 5", "5 - 10", "10 - 100", "> 100")) +
+  scale_x_discrete(name = "Flow [cms]", 
+                   labels = c("< 0.01", "0.01 - 0.1", "0.1 - 1", "1-10", ">100")) +
   scale_y_continuous(name = "Number of Flow\nMeasurements",
                      expand = expansion(c(0, 0.025))) +
   scale_fill_brewer(palette = 'Spectral') +
@@ -185,24 +157,16 @@ p_measurements <-
     legend.text  = element_text(size=8),
   ) +
   guides(fill = guide_legend(title = NULL))
- 
 
-p_ts_days <-
-  ggplot(annual, aes(x = WaterYear, y = toolow_prc)) +
-  geom_line(
-    color = "grey30", 
-    lty=2, 
-    lwd=1.2) +
-  geom_point(
-    pch = 21,
-    fill = "red",
-    col = "grey30", 
-    cex = 3) +
-  scale_y_continuous(
-    name = "% Annual Flow\nBelow Good\nFlow Measurement", #with\nDischarge < Lowest\nGood Measurement
-    labels = scales::percent, limits = c(0, 1)) +
-  scale_x_continuous(name = "Water Year") +
-  theme_classic()
+p_measurements
+ 
+# Estimate water year distribution --------------------------------------------
+daily_raw$WaterYear <- year(daily_raw$Date + days(92))
+daily_raw$WYDOY <- yday(daily_raw$Date + days(92))
+colnames(daily_raw)[colnames(daily_raw)=="X_00060_00003"] <- "discharge_cfs"
+daily <- 
+  daily_raw %>% 
+  subset(WaterYear >= 1980 & WaterYear <= 2021)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Step 6: Combine plots --------------------------------------------------------
