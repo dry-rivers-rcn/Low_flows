@@ -69,7 +69,7 @@ gages <- gages %>%
 # 3.0 Gage location figure -----------------------------------------------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #Crate map
-map_fig <- gages %>%
+p_map <- gages %>%
   arrange(daysSubGood_prc) %>% 
   ggplot()+
     geom_sf(data = states, lwd=0.5) + 
@@ -95,7 +95,7 @@ map_fig <- gages %>%
     #scale_shape(labels = c("Perennial", "Non-perennial")) +
     guides(
       color = guide_colorbar(
-        title ="% Flow Record", 
+        title ="% Flow record", 
         order = 1),
       size="none", 
       alpha = "none"
@@ -103,11 +103,11 @@ map_fig <- gages %>%
     theme_bw() +
       theme(
         legend.position = 'right',
-        legend.justification = "bottom") +
+        legend.justification = "center") +
       xlab(NULL) +
       ylab(NULL) 
   
-map_fig
+p_map
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # 4.0 Annual analysis for Konza ------------------------------------------------
@@ -149,12 +149,13 @@ p_measurements <-
     name = "Flow [cms]", 
     labels = c("<0.005", "0.005-0.05", "0.05-0.5", "0.5-5",">5")) +
   scale_y_continuous(
-    name = "Number of Flow\nMeasurements",
+    name = "Number of flow\nmeasurements",
     expand = expansion(c(0, 0.025))) +
   scale_fill_brewer(palette = 'Spectral') +
   theme_classic() +
   theme(
-    legend.position=c(0.76,0.85), 
+    axis.text.x = element_text(angle = 45, hjust= 1),
+    legend.position="bottom", 
     legend.direction = "horizontal",
     legend.title = element_text(size=10),
     legend.text  = element_text(size=8),
@@ -209,7 +210,7 @@ p_duration<-annual_flow %>%
     geom_point(
       pch=19, 
       cex=2.5, 
-      col="grey30"
+      col="#d53e4f"
     ) +
     theme_classic() +
       theme(
@@ -217,14 +218,24 @@ p_duration<-annual_flow %>%
         legend.text  = element_text(size=8),
       ) + 
     xlab("Anual Runoff [cm]") + 
-    ylab("Annual duration of flow below\n'Good' flow threshold [%]")
+    ylab("Duration of annual\nflow below 'good'\nthreshold [%]")
 
+p_duration
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Step 6: Combine plots --------------------------------------------------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#Print individual plots and them put them together in powerpoint
-ggsave(plot = map_fig,        file = "docs/map.png",            width = 6,   height = 3.75, units="in", dpi = 300)
-ggsave(plot = p_measurements, file = "docs/p_measurements.png", width = 3,   height = 2, units="in", dpi = 300)
-ggsave(plot = p_duration,      file = "docs/p_duration.png",      width = 3,   height = 2, units="in", dpi = 300)
+#Print all plots together using patchwork
+# p_map/(p_measurements + p_duration) +
+#   plot_layout(heights= unit(c(3.7, 1.5), c("in")))
+# ggsave(file="docs/figure_1.png", width=6, height = 6, units="in", dpi=300)
+
+#print top and bottom plots to patch together in ppt
+ggsave(plot = p_map, file = "docs/fig_1a.png", width = 6, height = 3.75, units="in", dpi = 300)
+ggsave(p_measurements + p_duration, file = "docs/fig_1bc.png", width = 6, height = 3, units="in", dpi = 300)
+
+#Print individual plots and them put them together in ppt
+# ggsave(plot = p_map,          file = "docs/p_map.png",          width = 6,   height = 3.75, units="in", dpi = 300)
+# ggsave(plot = p_measurements, file = "docs/p_measurements.png", width = 3,   height = 1.50, units="in", dpi = 300)
+# ggsave(plot = p_duration,     file = "docs/p_duration.png",     width = 3,   height = 1.50, units="in", dpi = 300)
 
