@@ -217,7 +217,7 @@ p_duration<-annual_flow %>%
         legend.title = element_text(size=10),
         legend.text  = element_text(size=8),
       ) + 
-    xlab("Anual Runoff [cm]") + 
+    xlab("Annual Runoff [cm]") + 
     ylab("Duration of annual\nflow below 'good'\nthreshold [%]")
 
 p_duration
