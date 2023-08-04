@@ -212,6 +212,6 @@ tf-t0
 
 #Export results ----------------
 df<-output %>% drop_na()
-write.csv(df, "data/SubGoodQ.csv")
+write.csv(df, "data/Sub_MinGoodFairQ.csv")
 
 
